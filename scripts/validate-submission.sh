@@ -107,7 +107,7 @@ log "${BOLD}Step 1/3: Pinging HF Space${NC} ($PING_URL/reset) ..."
 
 CURL_OUTPUT=$(portable_mktemp "validate-curl")
 CLEANUP_FILES+=("$CURL_OUTPUT")
-HTTP_CODE=$(curl -s -o "$CURL_OUTPUT" -w "%{http_code}" -X POST \
+HTTP_CODE=$(curl -s -o "$CURL_OUTPUT" -w "%{http_code}" -w "%{http_code}" -X POST \
   -H "Content-Type: application/json" -d '{}' \
   "$PING_URL/reset" --max-time 30 2>"$CURL_OUTPUT" || printf "000")
 
@@ -137,10 +137,8 @@ if [ -f "$REPO_DIR/Dockerfile" ]; then
   DOCKER_CONTEXT="$REPO_DIR"
 elif [ -f "$REPO_DIR/server/Dockerfile" ]; then
   DOCKER_CONTEXT="$REPO_DIR/server"
-elif [ -f "$REPO_DIR/factory_env/server/Dockerfile" ]; then
-  DOCKER_CONTEXT="$REPO_DIR/factory_env/server"
 else
-  fail "No Dockerfile found in repo root, server/, or factory_env/server/"
+  fail "No Dockerfile found in repo root or server/ directory"
   stop_at "Step 2"
 fi
 

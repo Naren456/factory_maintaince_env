@@ -39,12 +39,12 @@ import gradio as gr
 
 try:
     from ..models import FactoryAction, FactoryObservation
-    from .factory_env_environment import FactoryEnvironment
+    from ..environment import FactoryEnvironment
     from ..interface import demo
-except (ModuleNotFoundError, ImportError):
-    from models import FactoryAction, FactoryObservation
-    from server.factory_env_environment import FactoryEnvironment
-    from interface import demo
+except (ModuleNotFoundError, ImportError, ValueError):
+    from factory_env.models import FactoryAction, FactoryObservation
+    from factory_env.environment import FactoryEnvironment
+    from factory_env.interface import demo
 
 
 

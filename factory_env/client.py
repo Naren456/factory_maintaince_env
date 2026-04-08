@@ -12,7 +12,10 @@ from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
 
-from .models import FactoryAction, FactoryObservation, MachineState
+try:
+    from .models import FactoryAction, FactoryObservation, MachineState
+except (ImportError, ValueError):
+    from models import FactoryAction, FactoryObservation, MachineState
 
 
 class FactoryEnv(

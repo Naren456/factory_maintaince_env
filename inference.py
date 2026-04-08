@@ -1,58 +1,31 @@
 import asyncio
 import os
 import textwrap
-import json
 from typing import List, Optional
-
 from openai import OpenAI
-from factory_env.client import FactoryEnv, FactoryAction, FactoryObservation
+from dotenv import load_dotenv
 
-# Configuration from Environment Variables (Aligned with Checklist)
+# Local imports
+from client import FactoryEnv
+from models import FactoryAction
+
+load_dotenv()
+
+# MANDATORY variables from OpenEnv template
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
-
-# Optional – used if you use from_docker_image():
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
-TASK_NAME = os.getenv("FACTORY_TASK", "maintenance")
-BENCHMARK = os.getenv("FACTORY_BENCHMARK", "factory_v1")
-
+# Environment specifics
+TASK_NAME = "factory-maintenance"
+BENCHMARK = "factory_env"
 MAX_STEPS = 50
-TEMPERATURE = 0.2
-MAX_TOKENS = 100
-SUCCESS_SCORE_THRESHOLD = 0.5  # Budget at least 50% of starting
+SUCCESS_SCORE_THRESHOLD = 0.5
 
-# Initial budget is 2000.0
-INITIAL_BUDGET = 2000.0
-MAX_POSSIBLE_BUDGET = 5000.0 # Heuristic for normalization
-
-SYSTEM_PROMPT = textwrap.dedent(
-    """
-    You are an AI Factory Manager. Your goal is to maximize the factory's production budget through smart maintenance.
-    You manage 3 machines. 
-    Status Levels: operational (optimal), warning (needs check), broken (downtime penalty).
-    
-    Actions:
-    - wait: Continue production (Low cost $10).
-    - inspect <id>: View details (Cost $30).
-    - repair <id>: Fix wear/tear (Cost $150).
-    - replace <id>: Buy new machine (Cost $600).
-    
-    Penalty: Broken machines cause $200 downtime penalty per step.
-    
-    IMPORTANT: Reply ONLY with the action and machine ID (if applicable).
-    Examples:
-    - wait
-    - repair 0
-    - inspect 2
-    """
-).strip()
-
-
+# Standardized logging helpers
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
-
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
@@ -62,81 +35,58 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
         flush=True,
     )
 
-
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
-
-def build_user_prompt(step: int, obs: FactoryObservation) -> str:
+def get_model_action(client: OpenAI, obs, history: List[str]) -> str:
     machines_summary = "\n".join([
-        f"Machine {m.id}: {m.status.upper()} (Health: {m.health*100:.1f}%)" 
+        f"Machine {m.id}: {m.status} (Health: {m.health*100:.1f}%)" 
         for m in obs.machines
     ])
-    return textwrap.dedent(
-        f"""
-        Step: {step}
-        Current Budget: ${obs.budget:.2f}
-        Production Rate: {obs.production_rate:.1f}%
+    
+    prompt = textwrap.dedent(f"""
+        You are managing a factory maintenance schedule. 
+        Current Budget: ${obs.budget:.2f}.
         Machine Status:
         {machines_summary}
         
         Last Event: {obs.last_event}
-        What is your next action?
-        """
-    ).strip()
+        Goal: Maximize production by keeping machines healthy while managing costs.
+        Actions: wait, inspect <id>, repair <id>, replace <id>.
+        Output only the lowercase action string (e.g. 'wait' or 'repair 0').
+    """).strip()
 
-
-def parse_action(text: str) -> FactoryAction:
-    text = text.lower().strip()
-    parts = text.split()
-    if not parts:
-        return FactoryAction(type="wait")
-    
-    action_type = parts[0]
-    if action_type not in ["wait", "inspect", "repair", "replace"]:
-        action_type = "wait"
-    
-    machine_id = None
-    if len(parts) > 1 and parts[1].isdigit():
-        machine_id = int(parts[1])
-    
-    return FactoryAction(type=action_type, machine_id=machine_id)
-
-
-def get_model_action(client: OpenAI, step: int, obs: FactoryObservation) -> str:
-    user_prompt = build_user_prompt(step, obs)
     try:
-        completion = client.chat.completions.create(
+        response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
+                {"role": "system", "content": "You are an industrial RL agent. Output only the command."},
+                {"role": "user", "content": prompt}
             ],
-            temperature=TEMPERATURE,
-            max_tokens=MAX_TOKENS,
-            stream=False,
+            max_tokens=20,
+            temperature=0.0
         )
-        return (completion.choices[0].message.content or "").strip()
-    except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        return response.choices[0].message.content.strip().lower()
+    except Exception as e:
+        print(f"[DEBUG] LLM Error: {e}", flush=True)
         return "wait"
-
 
 async def main() -> None:
     if not HF_TOKEN:
-        print("[ERROR] HF_TOKEN not set", flush=True)
+        print("[ERROR] HF_TOKEN is missing.", flush=True)
         return
 
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-
-    # Initialize environment
+    
+    # Connect to the environment
+    # Use from_docker_image if LOCAL_IMAGE_NAME is set, else use localhost
     if LOCAL_IMAGE_NAME:
-        env = await FactoryEnv.from_docker_image(LOCAL_IMAGE_NAME)
+        env_client = FactoryEnv.from_docker_image(LOCAL_IMAGE_NAME)
     else:
-        # Fallback to local server if no image specified
-        env = FactoryEnv(base_url="http://localhost:8000")
+        env_client = FactoryEnv(base_url="http://localhost:8000")
 
+    history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
@@ -145,41 +95,50 @@ async def main() -> None:
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        async with env:
-            result = await env.reset()
-            current_obs = result.observation
+        # We use the sync manager for simplicity in the loop, or async if preferred
+        # Here we follow the FactoryEnv sync pattern established earlier
+        with env_client.sync() as env:
+            result = env.reset()
+            obs = result.observation
 
             for step in range(1, MAX_STEPS + 1):
                 if result.done:
                     break
 
-                action_text = get_model_action(client, step, current_obs)
-                action = parse_action(action_text)
-
-                result = await env.step(action)
-                current_obs = result.observation
+                action_str = get_model_action(client, obs, history)
+                
+                # Parse action
+                parts = action_str.split()
+                action_type = parts[0] if parts else "wait"
+                machine_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+                
+                # Execute
+                result = env.step(FactoryAction(type=action_type, machine_id=machine_id))
+                obs = result.observation
                 
                 reward = result.reward or 0.0
                 done = result.done
-                
+                error = None 
+
                 rewards.append(reward)
                 steps_taken = step
                 
-                log_step(step=step, action=action_text, reward=reward, done=done, error=None)
+                log_step(step=step, action=action_str, reward=reward, done=done, error=error)
+                history.append(f"Step {step}: {action_str} -> {reward:.2f}")
 
                 if done:
                     break
 
-            # Calculate final score based on budget retention
-            score = current_obs.budget / INITIAL_BUDGET
-            score = min(max(score, 0.0), 1.0)
+            # Use the environment's built-in score/success criteria
+            score = obs.score
             success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as e:
-        print(f"[ERROR] Simulation failed: {e}", flush=True)
+        print(f"[DEBUG] Inference error: {e}", flush=True)
     finally:
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
-
 if __name__ == "__main__":
+    if not os.environ.get("HF_TOKEN") and os.environ.get("OPENAI_API_KEY"):
+        os.environ["HF_TOKEN"] = os.environ["OPENAI_API_KEY"]
     asyncio.run(main())

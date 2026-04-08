@@ -20,22 +20,21 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Virtual Environment
 .venv/
 venv/
 ENV/
 
-# Credentials
-.env
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project local
+# OpenEnv / Environment logs
 *.log
-.coverage
-htmlcov/
-.mypy_cache/
-.pytest_cache/
+server.log
+server_test.log
+server_ui.log
+.DS_Store
+
+# UV
+uv.lock
+.uv/
+
+# Local env files
+.env
+.flaskenv

@@ -48,7 +48,7 @@ class FactoryObservation(Observation):
         default=0.0, description="Current units produced per step"
     )
     budget: float = Field(
-        default=1000.0, description="Remaining financial resources"
+        default=2000.0, description="Remaining financial resources"
     )
     last_event: str = Field(
         default="", description="Description of what happened in the last step"
@@ -58,5 +58,11 @@ class FactoryObservation(Observation):
     )
     done: bool = Field(
         default=False, description="Whether the episode is finished"
+    )
+    task_id: str = Field(
+        default="medium", description="Identifier of the current task (easy, medium, hard)"
+    )
+    score: float = Field(
+        default=0.0, description="Normalized score [0, 1] for the current task"
     )
 

@@ -1,6 +1,6 @@
 import random
 from uuid import uuid4
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
@@ -35,26 +35,42 @@ class FactoryEnvironment(Environment):
         """Initialize the factory environment."""
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self.budget = 2000.0
+        self.task_id = "medium"
+        self.decay_range = (0.01, 0.05)
         self.machines: List[MachineState] = []
-        self._initialize_machines()
+        self._initialize_machines(low_health=False)
 
-    def _initialize_machines(self):
+    def _initialize_machines(self, low_health: bool = False):
         self.machines = []
         for i in range(self.NUM_MACHINES):
+            h_min, h_max = (0.5, 0.7) if low_health else (0.8, 1.0)
             self.machines.append(MachineState(
                 id=i,
                 status="operational",
-                health=random.uniform(0.8, 1.0),
+                health=random.uniform(h_min, h_max),
                 last_maint=0
             ))
 
-    def reset(self) -> FactoryObservation:
-        """Reset the environment."""
+    def reset(self, task_id: Optional[str] = None) -> FactoryObservation:
+        """Reset the environment with a specific task difficulty."""
         self._state = State(episode_id=str(uuid4()), step_count=0)
-        self.budget = 2000.0
-        self._initialize_machines()
+        self.task_id = task_id or "medium"
         
-        return self._make_observation("Environment reset. Factory operation started.", 0.0)
+        low_health = False
+        if self.task_id == "easy":
+            self.budget = 3000.0
+            self.decay_range = (0.005, 0.02)
+        elif self.task_id == "hard":
+            self.budget = 1000.0
+            self.decay_range = (0.03, 0.08)
+            low_health = True
+        else: # medium
+            self.budget = 2000.0
+            self.decay_range = (0.01, 0.05)
+
+        self._initialize_machines(low_health=low_health)
+        
+        return self._make_observation(f"Environment reset. Task: {self.task_id.upper()}", 0.0)
 
     def step(self, action: FactoryAction) -> FactoryObservation:  # type: ignore[override]
         """Execute a step in the factory."""
@@ -95,7 +111,6 @@ class FactoryEnvironment(Environment):
                     event_msg = f"Replaced Machine {m_id} with new unit."
 
         # 2. Production Logic
-        # Calculate revenue based on operational machines
         operational_count = sum(1 for m in self.machines if m.status == "operational")
         warning_count = sum(1 for m in self.machines if m.status == "warning")
         broken_count = sum(1 for m in self.machines if m.status == "broken")
@@ -103,21 +118,18 @@ class FactoryEnvironment(Environment):
         production_multiplier = (operational_count * 1.0) + (warning_count * 0.5)
         revenue = self.BASE_PRODUCTION_REVENUE * (production_multiplier / self.NUM_MACHINES)
         
-        # Deduct costs and penalty
         downtime_cost = broken_count * self.DOWNTIME_PENALTY
         step_reward = revenue - action_cost - downtime_cost
         self.budget += step_reward
 
-        # 3. Health Decay Logic (at the end of step)
+        # 3. Health Decay Logic
         for m in self.machines:
-            # Random decay
-            decay = random.uniform(0.01, 0.05)
+            decay = random.uniform(self.decay_range[0], self.decay_range[1])
             if m.status == "warning":
-                decay *= 2.0
+                decay *= 1.5
             
             m.health = max(0.0, m.health - decay)
             
-            # Update status based on health
             if m.health <= 0.1:
                 m.status = "broken"
             elif m.health <= 0.5:
@@ -125,16 +137,23 @@ class FactoryEnvironment(Environment):
             else:
                 m.status = "operational"
 
-        # Check if done
         done = self._state.step_count >= self.MAX_STEPS or self.budget <= 0
         
         return self._make_observation(event_msg, step_reward, done)
 
     def _make_observation(self, msg: str, reward: float, done: bool = False) -> FactoryObservation:
-        # Calculate current production rate
         op_count = sum(1 for m in self.machines if m.status == "operational")
         wr_count = sum(1 for m in self.machines if m.status == "warning")
         prod_rate = (op_count + wr_count * 0.5) / self.NUM_MACHINES * 100.0
+
+        # Normalized score: Budget compared to starting budget for the task
+        initial_budget = 2000.0
+        if self.task_id == "easy":
+            initial_budget = 3000.0
+        elif self.task_id == "hard":
+            initial_budget = 1000.0
+        
+        score = max(0.0, min(1.0, self.budget / initial_budget))
 
         return FactoryObservation(
             machines=[m.model_copy() for m in self.machines],
@@ -143,6 +162,8 @@ class FactoryEnvironment(Environment):
             last_event=msg,
             reward=reward,
             done=done,
+            task_id=self.task_id,
+            score=score,
             metadata={
                 "step": self._state.step_count,
                 "broken_machines": self.NUM_MACHINES - op_count - wr_count
