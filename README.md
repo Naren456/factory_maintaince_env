@@ -1,3 +1,12 @@
+---
+title: Factory Maintenance
+emoji: 🏭
+colorFrom: green
+colorTo: blue
+sdk: docker
+app_port: 8000
+---
+
 # Factory Maintenance Digital Twin 🏭
 
 [![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-Compliant-green)](https://github.com/meta-pytorch/OpenEnv)
