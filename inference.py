@@ -7,11 +7,14 @@ from typing import List, Optional
 from openai import OpenAI
 from factory_env.client import FactoryEnv, FactoryAction, FactoryObservation
 
-# Configuration from Environment Variables
-IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") or os.getenv("IMAGE_NAME")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+# Configuration from Environment Variables (Aligned with Checklist)
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+# Optional – used if you use from_docker_image():
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+
 TASK_NAME = os.getenv("FACTORY_TASK", "maintenance")
 BENCHMARK = os.getenv("FACTORY_BENCHMARK", "factory_v1")
 
@@ -121,15 +124,15 @@ def get_model_action(client: OpenAI, step: int, obs: FactoryObservation) -> str:
 
 
 async def main() -> None:
-    if not API_KEY:
-        print("[ERROR] HF_TOKEN or API_KEY not set", flush=True)
+    if not HF_TOKEN:
+        print("[ERROR] HF_TOKEN not set", flush=True)
         return
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     # Initialize environment
-    if IMAGE_NAME:
-        env = await FactoryEnv.from_docker_image(IMAGE_NAME)
+    if LOCAL_IMAGE_NAME:
+        env = await FactoryEnv.from_docker_image(LOCAL_IMAGE_NAME)
     else:
         # Fallback to local server if no image specified
         env = FactoryEnv(base_url="http://localhost:8000")
