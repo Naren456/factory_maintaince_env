@@ -1,12 +1,3 @@
----
-title: Factory Maintenance Digital Twin
-emoji: 🏭
-colorFrom: emerald
-colorTo: blue
-sdk: docker
-pinned: false
----
-
 # Factory Maintenance Digital Twin 🏭
 
 [![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-Compliant-green)](https://github.com/meta-pytorch/OpenEnv)
