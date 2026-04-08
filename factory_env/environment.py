@@ -6,8 +6,8 @@ from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
 try:
-    from ..models import FactoryAction, FactoryObservation, MachineState
-except ImportError:
+    from .models import FactoryAction, FactoryObservation, MachineState
+except (ImportError, ValueError):
     from models import FactoryAction, FactoryObservation, MachineState
 
 
@@ -79,7 +79,7 @@ class FactoryEnvironment(Environment):
         event_msg = ""
         action_cost = 0.0
         
-        # 1. Process Maintenance Action
+        # 1. Process Maintenance Action (Immediate)
         if action.type == "wait":
             action_cost = self.WAIT_COST
             event_msg = "Factory operating normally (Waiting)."
@@ -97,20 +97,33 @@ class FactoryEnvironment(Environment):
                     action_cost = self.REPAIR_COST
                     if target.status == "broken":
                         target.health = min(0.7, target.health + 0.4)
-                        target.status = "warning"
                     else:
                         target.health = min(1.0, target.health + 0.3)
-                        target.status = "operational"
                     target.last_maint = self._state.step_count
                     event_msg = f"Repaired Machine {m_id}."
                 elif action.type == "replace":
                     action_cost = self.REPLACE_COST
                     target.health = 1.0
-                    target.status = "operational"
                     target.last_maint = self._state.step_count
                     event_msg = f"Replaced Machine {m_id} with new unit."
 
-        # 2. Production Logic
+        # 2. Health Decay Logic (Happens during the shift)
+        for m in self.machines:
+            decay = random.uniform(self.decay_range[0], self.decay_range[1])
+            if m.status == "warning":
+                decay *= 1.5
+            
+            m.health = max(0.0, min(1.0, m.health - decay))
+            
+            # Update status based on post-decay health
+            if m.health <= 0.1:
+                m.status = "broken"
+            elif m.health <= 0.5:
+                m.status = "warning"
+            else:
+                m.status = "operational"
+
+        # 3. Production Logic (Based on POST-DECAY health)
         operational_count = sum(1 for m in self.machines if m.status == "operational")
         warning_count = sum(1 for m in self.machines if m.status == "warning")
         broken_count = sum(1 for m in self.machines if m.status == "broken")
@@ -121,21 +134,6 @@ class FactoryEnvironment(Environment):
         downtime_cost = broken_count * self.DOWNTIME_PENALTY
         step_reward = revenue - action_cost - downtime_cost
         self.budget += step_reward
-
-        # 3. Health Decay Logic
-        for m in self.machines:
-            decay = random.uniform(self.decay_range[0], self.decay_range[1])
-            if m.status == "warning":
-                decay *= 1.5
-            
-            m.health = max(0.0, m.health - decay)
-            
-            if m.health <= 0.1:
-                m.status = "broken"
-            elif m.health <= 0.5:
-                m.status = "warning"
-            else:
-                m.status = "operational"
 
         done = self._state.step_count >= self.MAX_STEPS or self.budget <= 0
         

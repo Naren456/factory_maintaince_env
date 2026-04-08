@@ -1,8 +1,8 @@
 import gradio as gr
 import pandas as pd
 import time
-from server.factory_env_environment import FactoryEnvironment
-from models import FactoryAction
+from .environment import FactoryEnvironment
+from .models import FactoryAction
 
 # Initialize environment
 env = FactoryEnvironment()

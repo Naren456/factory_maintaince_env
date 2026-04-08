@@ -66,6 +66,11 @@ async def root():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/dashboard")
 
+# Explicit health check for Docker/OpenEnv validators
+@app.get("/health")
+async def health():
+    return {"status": "ok", "environment": "factory_env"}
+
 
 
 def main(host: str = "0.0.0.0", port: int = 8000):
