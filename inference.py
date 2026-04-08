@@ -82,15 +82,26 @@ def get_model_action(client: OpenAI, obs, history: List[str]) -> str:
     ])
     
     prompt = textwrap.dedent(f"""
-        You are managing a factory maintenance schedule. 
-        Current Budget: ${obs.budget:.2f}.
-        Machine Status:
+        You are an AI Industrial Controller. 
+        FACTORY STATUS (Current Step: {obs.metadata.get('step', 0)}/50)
+        Budget: ${obs.budget:.2f} (If budget <= 0, you lose!)
+        Production Rate: {obs.production_rate:.1f}%
+
+        MACHINES:
         {machines_summary}
         
-        Last Event: {obs.last_event}
-        Goal: Maximize production by keeping machines healthy while managing costs.
-        Actions: wait, inspect <id>, repair <id>, replace <id>.
-        Output only the lowercase action string (e.g. 'wait' or 'repair 0').
+        LAST EVENT: {obs.last_event}
+
+        RULES:
+        - 'wait': Cost $10, produces revenue based on health.
+        - 'inspect <id>': Cost $30, reveals health.
+        - 'repair <id>': Cost $150, restores partial health.
+        - 'replace <id>': Cost $600, restores 100% health.
+        
+        STRATEGY: Balance repair costs with production revenue. Do not let machines break (Health < 10%).
+        GOAL: Maximize final budget.
+
+        Input only the lowercase action string (e.g. 'wait' or 'repair 0').
     """).strip()
 
     try:
