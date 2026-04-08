@@ -137,8 +137,10 @@ if [ -f "$REPO_DIR/Dockerfile" ]; then
   DOCKER_CONTEXT="$REPO_DIR"
 elif [ -f "$REPO_DIR/server/Dockerfile" ]; then
   DOCKER_CONTEXT="$REPO_DIR/server"
+elif [ -f "$REPO_DIR/factory_env/server/Dockerfile" ]; then
+  DOCKER_CONTEXT="$REPO_DIR/factory_env/server"
 else
-  fail "No Dockerfile found in repo root or server/ directory"
+  fail "No Dockerfile found in repo root, server/, or factory_env/server/"
   stop_at "Step 2"
 fi
 
