@@ -35,16 +35,12 @@ except Exception as e:  # pragma: no cover
         "openenv is required for the web interface. Install dependencies with '\n    uv sync\n'"
     ) from e
 
-import gradio as gr
-
 try:
     from ..models import FactoryAction, FactoryObservation
     from ..environment import FactoryEnvironment
-    from ..interface import demo
 except (ModuleNotFoundError, ImportError, ValueError):
     from factory_env.models import FactoryAction, FactoryObservation
     from factory_env.environment import FactoryEnvironment
-    from factory_env.interface import demo
 
 
 
@@ -57,14 +53,12 @@ fastapi_app = create_app(
     max_concurrent_envs=1,
 )
 
-# Mount Gradio UI
-app = gr.mount_gradio_app(fastapi_app, demo, path="/dashboard")
+# Set the FastAPI app directly
+app = fastapi_app
 
-# Optional: redirect root to dashboard
 @app.get("/")
 async def root():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/dashboard")
+    return {"status": "running", "environment": "factory_env", "api_docs": "/docs"}
 
 # Explicit health check for Docker/OpenEnv validators
 @app.get("/health")
